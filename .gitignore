@@ -9,6 +9,7 @@ outputs/
 datasets/
 examples/output/
 output/
+experiment/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
