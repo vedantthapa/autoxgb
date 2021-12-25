@@ -4,10 +4,12 @@ from pydantic import BaseModel
 
 from .enums import ProblemType
 
+import pandas as pd
+
 
 class ModelConfig(BaseModel):
-    train_filename: str
-    test_filename: Optional[str] = None
+    train_file: pd.DataFrame
+    test_file: Optional[pd.DataFrame] = None
     idx: str
     targets: List[str]
     problem_type: ProblemType
@@ -20,3 +22,6 @@ class ModelConfig(BaseModel):
     num_trials: int
     time_limit: Optional[int] = None
     fast: bool
+
+    class Config:
+        arbitrary_types_allowed = True

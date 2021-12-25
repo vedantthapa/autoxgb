@@ -52,10 +52,12 @@ class Metrics:
                 elif metric_name == "logloss":
                     metrics[metric_name] = metric_func(y_true, y_pred)
                 else:
-                    metrics[metric_name] = metric_func(y_true, y_pred[:, 1] >= 0.5)
+                    metrics[metric_name] = metric_func(
+                        y_true, y_pred[:, 1] >= 0.5)
             elif self.problem_type == ProblemType.multi_class_classification:
                 if metric_name == "accuracy":
-                    metrics[metric_name] = metric_func(y_true, np.argmax(y_pred, axis=1))
+                    metrics[metric_name] = metric_func(
+                        y_true, np.argmax(y_pred, axis=1))
                 else:
                     metrics[metric_name] = metric_func(y_true, y_pred)
             else:

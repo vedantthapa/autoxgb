@@ -12,17 +12,16 @@ from sklearn.utils.multiclass import type_of_target
 from .enums import ProblemType
 from .logger import logger
 from .schemas import ModelConfig
-from .utils import predict_model, reduce_memory_usage, train_model
+from .utils import reduce_memory_usage
 
 
 @dataclass
 class AutoXGB:
-    # required arguments
-    train_filename: str
+    train_file: pd.DataFrame
     output: str
 
     # optional arguments
-    test_filename: Optional[str] = None
+    test_file: Optional[pd.DataFrame] = None
     task: Optional[str] = None
     idx: Optional[str] = "id"
     targets: Optional[List[str]] = None
@@ -37,12 +36,14 @@ class AutoXGB:
 
     def __post_init__(self):
         if os.path.exists(self.output):
-            raise Exception("Output directory already exists. Please specify some other directory.")
+            raise Exception(
+                "Output directory already exists. Please specify some other directory.")
         os.makedirs(self.output, exist_ok=True)
         logger.info(f"Output directory: {self.output}")
 
         if self.targets is None:
-            logger.warning("No target columns specified. Will default to `target`.")
+            logger.warning(
+                "No target columns specified. Will default to `target`.")
             self.targets = ["target"]
 
         if self.idx is None:
@@ -59,7 +60,8 @@ class AutoXGB:
         train_df["kfold"] = -1
         if problem_type in (ProblemType.binary_classification, ProblemType.multi_class_classification):
             y = train_df[self.targets].values
-            kf = StratifiedKFold(n_splits=self.num_folds, shuffle=True, random_state=self.seed)
+            kf = StratifiedKFold(n_splits=self.num_folds,
+                                 shuffle=True, random_state=self.seed)
             for fold, (_, valid_indicies) in enumerate(kf.split(X=train_df, y=y)):
                 train_df.loc[valid_indicies, "kfold"] = fold
         elif problem_type == ProblemType.single_column_regression:
@@ -67,20 +69,23 @@ class AutoXGB:
             num_bins = int(np.floor(1 + np.log2(len(train_df))))
             if num_bins > 10:
                 num_bins = 10
-            kf = StratifiedKFold(n_splits=self.num_folds, shuffle=True, random_state=self.seed)
-            train_df["bins"] = pd.cut(train_df[self.targets].values.ravel(), bins=num_bins, labels=False)
+            kf = StratifiedKFold(n_splits=self.num_folds,
+                                 shuffle=True, random_state=self.seed)
+            train_df["bins"] = pd.cut(
+                train_df[self.targets].values.ravel(), bins=num_bins, labels=False)
             for fold, (_, valid_indicies) in enumerate(kf.split(X=train_df, y=train_df.bins.values)):
                 train_df.loc[valid_indicies, "kfold"] = fold
             train_df = train_df.drop("bins", axis=1)
         elif problem_type == ProblemType.multi_column_regression:
             y = train_df[self.targets].values
-            kf = KFold(n_splits=self.num_folds, shuffle=True, random_state=self.seed)
+            kf = KFold(n_splits=self.num_folds,
+                       shuffle=True, random_state=self.seed)
             for fold, (_, valid_indicies) in enumerate(kf.split(X=train_df, y=y)):
                 train_df.loc[valid_indicies, "kfold"] = fold
-        # TODO: use iterstrat
         elif problem_type == ProblemType.multi_label_classification:
             y = train_df[self.targets].values
-            kf = KFold(n_splits=self.num_folds, shuffle=True, random_state=self.seed)
+            kf = KFold(n_splits=self.num_folds,
+                       shuffle=True, random_state=self.seed)
             for fold, (_, valid_indicies) in enumerate(kf.split(X=train_df, y=y)):
                 train_df.loc[valid_indicies, "kfold"] = fold
         else:
@@ -136,7 +141,8 @@ class AutoXGB:
             elif target_type == "multilabel-indicator":
                 problem_type = ProblemType.multi_label_classification
             else:
-                raise Exception("Unable to infer `problem_type`. Please provide `classification` or `regression`")
+                raise Exception(
+                    "Unable to infer `problem_type`. Please provide `classification` or `regression`")
         logger.info(f"Problem type: {problem_type.name}")
         return problem_type
 
@@ -147,13 +153,13 @@ class AutoXGB:
 
     def _process_data(self):
         logger.info("Reading training data")
-        train_df = pd.read_csv(self.train_filename)
+        train_df = self.train_file
         train_df = reduce_memory_usage(train_df)
         problem_type = self._determine_problem_type(train_df)
 
         train_df = self._inject_idxumn(train_df)
-        if self.test_filename is not None:
-            test_df = pd.read_csv(self.test_filename)
+        if self.test_file is not None:
+            test_df = self.test_file
             test_df = reduce_memory_usage(test_df)
             test_df = self._inject_idxumn(test_df)
 
@@ -163,7 +169,8 @@ class AutoXGB:
 
         if self.features is None:
             self.features = list(train_df.columns)
-            self.features = [x for x in self.features if x not in ignore_columns]
+            self.features = [
+                x for x in self.features if x not in ignore_columns]
 
         # encode target(s)
         if problem_type in [ProblemType.binary_classification, ProblemType.multi_class_classification]:
@@ -198,29 +205,38 @@ class AutoXGB:
             logger.info("Encoding categorical features")
         categorical_encoders = {}
         for fold in range(self.num_folds):
-            fold_train = train_df[train_df.kfold != fold].reset_index(drop=True)
-            fold_valid = train_df[train_df.kfold == fold].reset_index(drop=True)
-            if self.test_filename is not None:
+            fold_train = train_df[train_df.kfold !=
+                                  fold].reset_index(drop=True)
+            fold_valid = train_df[train_df.kfold ==
+                                  fold].reset_index(drop=True)
+            if self.test_file is not None:
                 test_fold = test_df.copy(deep=True)
             if len(categorical_features) > 0:
-                ord_encoder = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=np.nan)
-                fold_train[categorical_features] = ord_encoder.fit_transform(fold_train[categorical_features].values)
-                fold_valid[categorical_features] = ord_encoder.transform(fold_valid[categorical_features].values)
-                if self.test_filename is not None:
-                    test_fold[categorical_features] = ord_encoder.transform(test_fold[categorical_features].values)
+                ord_encoder = OrdinalEncoder(
+                    handle_unknown="use_encoded_value", unknown_value=np.nan)
+                fold_train[categorical_features] = ord_encoder.fit_transform(
+                    fold_train[categorical_features].values)
+                fold_valid[categorical_features] = ord_encoder.transform(
+                    fold_valid[categorical_features].values)
+                if self.test_file is not None:
+                    test_fold[categorical_features] = ord_encoder.transform(
+                        test_fold[categorical_features].values)
                 categorical_encoders[fold] = ord_encoder
-            fold_train.to_feather(os.path.join(self.output, f"train_fold_{fold}.feather"))
-            fold_valid.to_feather(os.path.join(self.output, f"valid_fold_{fold}.feather"))
-            if self.test_filename is not None:
-                test_fold.to_feather(os.path.join(self.output, f"test_fold_{fold}.feather"))
+            fold_train.to_feather(os.path.join(
+                self.output, f"train_fold_{fold}.feather"))
+            fold_valid.to_feather(os.path.join(
+                self.output, f"valid_fold_{fold}.feather"))
+            if self.test_file is not None:
+                test_fold.to_feather(os.path.join(
+                    self.output, f"test_fold_{fold}.feather"))
 
         # save config
         model_config = {}
         model_config["idx"] = self.idx
         model_config["features"] = self.features
         model_config["categorical_features"] = categorical_features
-        model_config["train_filename"] = self.train_filename
-        model_config["test_filename"] = self.test_filename
+        model_config["train_file"] = self.train_file
+        model_config["test_file"] = self.test_file
         model_config["output"] = self.output
         model_config["problem_type"] = problem_type
         model_config["idx"] = self.idx
@@ -233,21 +249,11 @@ class AutoXGB:
         model_config["fast"] = self.fast
 
         self.model_config = ModelConfig(**model_config)
-        logger.info(f"Model config: {self.model_config}")
         logger.info("Saving model config")
         joblib.dump(self.model_config, f"{self.output}/axgb.config")
 
         # save encoders
         logger.info("Saving encoders")
-        joblib.dump(categorical_encoders, f"{self.output}/axgb.categorical_encoders")
+        joblib.dump(categorical_encoders,
+                    f"{self.output}/axgb.categorical_encoders")
         joblib.dump(target_encoder, f"{self.output}/axgb.target_encoder")
-
-    def train(self):
-        self._process_data()
-        best_params = train_model(self.model_config)
-        logger.info("Training complete")
-        self.predict(best_params)
-
-    def predict(self, best_params):
-        logger.info("Creating OOF and test predictions")
-        predict_model(self.model_config, best_params)
