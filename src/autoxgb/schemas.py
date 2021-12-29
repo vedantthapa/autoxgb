@@ -22,6 +22,7 @@ class ModelConfig(BaseModel):
     num_trials: int
     time_limit: Optional[int] = None
     fast: bool
+    baseline: bool
 
     class Config:
         arbitrary_types_allowed = True

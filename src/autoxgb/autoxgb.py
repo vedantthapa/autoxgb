@@ -12,7 +12,7 @@ from sklearn.utils.multiclass import type_of_target
 from .enums import ProblemType
 from .logger import logger
 from .schemas import ModelConfig
-from .utils import reduce_memory_usage
+from .utils import reduce_memory_usage, train_model, predict_model, train_baseline
 
 
 @dataclass
@@ -33,6 +33,7 @@ class AutoXGB:
     num_trials: Optional[int] = 1000
     time_limit: Optional[int] = None
     fast: Optional[bool] = False
+    baseline: Optional[bool] = False
 
     def __post_init__(self):
         if os.path.exists(self.output):
@@ -53,6 +54,8 @@ class AutoXGB:
     def _create_folds(self, train_df, problem_type):
         if "kfold" in train_df.columns:
             self.num_folds = len(np.unique(train_df["kfold"]))
+            if self.num_folds == 2:
+                self.num_folds -= 1
             logger.info("Using `kfold` for folds from training data")
             return train_df
 
@@ -247,6 +250,7 @@ class AutoXGB:
         model_config["num_trials"] = self.num_trials
         model_config["time_limit"] = self.time_limit
         model_config["fast"] = self.fast
+        model_config["baseline"] = self.baseline
 
         self.model_config = ModelConfig(**model_config)
         logger.info("Saving model config")
@@ -257,3 +261,14 @@ class AutoXGB:
         joblib.dump(categorical_encoders,
                     f"{self.output}/axgb.categorical_encoders")
         joblib.dump(target_encoder, f"{self.output}/axgb.target_encoder")
+
+    def train(self):
+        self._process_data()
+        best_params = train_model(self.model_config)
+        logger.info("Training complete")
+        self.predict(best_params)
+        return best_params
+
+    def predict(self, best_params):
+        logger.info("Creating OOF and test predictions")
+        predict_model(self.model_config, best_params)
