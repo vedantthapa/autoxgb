@@ -12,7 +12,7 @@ from sklearn.utils.multiclass import type_of_target
 from .enums import ProblemType
 from .logger import logger
 from .schemas import ModelConfig
-from .utils import reduce_memory_usage, train_model, predict_model, train_baseline
+from .utils import reduce_memory_usage, train_model, predict_model
 
 
 @dataclass

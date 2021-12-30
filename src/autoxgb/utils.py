@@ -231,50 +231,6 @@ def train_model(model_config):
         return study.best_params
 
 
-def train_baseline(model_config):
-    xgb_model, use_predict_proba, eval_metric, _ = fetch_xgb_model_params(
-        model_config)
-
-    metrics = Metrics(model_config.problem_type)
-
-    scores = []
-
-    for fold in range(model_config.num_folds):
-        train_feather = pd.read_feather(os.path.join(
-            model_config.output, f"train_fold_{fold}.feather"))
-        valid_feather = pd.read_feather(os.path.join(
-            model_config.output, f"valid_fold_{fold}.feather"))
-        xtrain = train_feather[model_config.features]
-        xvalid = valid_feather[model_config.features]
-
-        ytrain = train_feather[model_config.targets].values
-        yvalid = valid_feather[model_config.targets].values
-
-        # train model
-        model = xgb_model(
-            random_state=model_config.seed,
-            eval_metric=eval_metric,
-            use_label_encoder=False,
-        )
-        model.fit(
-            xtrain,
-            ytrain,
-            eval_set=[(xvalid, yvalid)],
-            verbose=True,
-        )
-
-        if use_predict_proba:
-            ypred = model.predict_proba(xvalid)
-        else:
-            ypred = model.predict(xvalid)
-        metric_dict = metrics.calculate(yvalid, ypred)
-        scores.append(metric_dict)
-
-    mean_metrics = dict_mean(scores)
-    logger.info(f"Metrics: {mean_metrics}")
-    return model.get_xgb_params()
-
-
 def predict_model(model_config, best_params):
 
     early_stopping_rounds = best_params["early_stopping_rounds"]
